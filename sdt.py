@@ -136,7 +136,7 @@ def writeDHCPPlist(plistPath,offer):
         pldata = dict(bsdp = [],dhcp = dict(dhcpserverip=dhcpServer, ipaddress=ipAdd))
         
     try:
-        plistlib.dumps(pldata, plistPath, fmt=FMT_XML)
+        plistlib.dumps(pldata, plistPath, fmt=plistlib.FMT_XML)
     except NameError as e:
         print("Failed to write plist!")
         print(e)
