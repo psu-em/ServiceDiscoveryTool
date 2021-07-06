@@ -1,3 +1,4 @@
+#!/usr/local/bin/python3
 '''
 Service Discovery Tool 1.1
 This tool broadcasts requests for DHCP and BSDP,
@@ -58,7 +59,7 @@ def openSocket(port):
     dhcps.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1) #broadcast
 
     try:
-        if packetType is "dhcp":
+        if packetType == "dhcp":
             dhcps.bind(('', port))    #we want to listen on 68 for DHCP
         else:
             dhcps.bind(('', port))    #we want to listen on 993 for BSDP
@@ -120,7 +121,7 @@ def writeDHCPPlist(plistPath,offer):
     # Check for existing DHCP Info
     if os.path.exists(plistPath):
         try:
-            pldata = plistlib.readPlist(plistPath)
+            pldata = plistlib.load(plistPath)
         except:
             print("Can't read plist.")
         try:
@@ -135,7 +136,7 @@ def writeDHCPPlist(plistPath,offer):
         pldata = dict(bsdp = [],dhcp = dict(dhcpserverip=dhcpServer, ipaddress=ipAdd))
         
     try:
-        plistlib.writePlist(pldata, plistPath)
+        plistlib.dumps(pldata, plistPath, fmt=FMT_XML)
     except NameError as e:
         print("Failed to write plist!")
         print(e)
@@ -228,10 +229,9 @@ class DHCPDiscover:
         for i in range(4):
             t = randint(0, 255)
             self.transactionID += struct.pack('!B', t) 
-
     def buildPacket(self,packType):
         macb = getMacInBytes()
-        if packType is "dhcp":
+        if packType == "dhcp":
             packet = b''
             packet += b'\x01'   #Message type: Boot Request (1)
             packet += b'\x01'   #Hardware type: Ethernet
@@ -307,8 +307,7 @@ class BSDPOffer:
         self.vendorOptionResults = {}
         self.BSDPServerIP = ''
         self.vendorClassID = ''
-        self.unpack()
-    
+        self.unpack()   
     def unpack(self):
         # print(self.data) # print out the data for testing
         if self.data[4:8] == self.transID :
@@ -402,9 +401,9 @@ class DHCPOffer:
         self.subnetMask = ''
         self.DNS = []
         self.unpack()
-    
     def unpack(self):
         print('{0}{1}'.format('Length: ', len(self.data)))
+        print('{0}{1}'.format('Data: ', self.data))
         if self.data[4:8] == self.transID :
             self.offerIP = '.'.join(map(lambda x:str(x), data[16:20]))
             self.nextServerIP = '.'.join(map(lambda x:str(x), data[20:24]))  #c'est une option
@@ -415,8 +414,7 @@ class DHCPOffer:
             dnsNB = int(data[268]/4)
             # dnsNB = ord(data[268])/4 
             for i in range(0, 4 * dnsNB, 4):
-                self.DNS.append('.'.join(map(lambda x:str(x), data[269 + i :269 + i + 4])))
-                
+                self.DNS.append('.'.join(map(lambda x:str(x), data[269 + i :269 + i + 4])))                
     def printOffer(self):
         key = ['DHCP Server', 'Offered IP address', 'subnet mask', 'lease time (s)' , 'default gateway']
         val = [self.DHCPServerIdentifier, self.offerIP, self.subnetMask, self.leaseTime, self.router]
@@ -429,7 +427,6 @@ class DHCPOffer:
         if len(self.DNS) > 1:
             for i in range(1, len(self.DNS)): 
                 print('{0:22s} {1:15s}'.format(' ', self.DNS[i])) 
-
     def writePlist(self, plistPath):
         try:
             p = plistlib.readPlist(sysrecord.plistPath)
@@ -471,10 +468,11 @@ if __name__ == '__main__':
         dhcps.sendto(discoverPacket.buildPacket(packetType), ('<broadcast>', 67))
         print('DHCP Discover sent waiting for reply...\n')
         #receiving DHCPOffer packet  
-        dhcps.settimeout(5)
+        dhcps.settimeout(15)
         try:
             while True:
                 data = dhcps.recv(1024)
+                print(data)
                 offer = DHCPOffer(data, discoverPacket.transactionID)
                 if offer.offerIP:
                     offer.printOffer()
