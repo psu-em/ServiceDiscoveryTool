@@ -1,5 +1,4 @@
 #!/usr/local/bin/python3
-
 # Service Discovery Tool 1.2
 # This tool broadcasts requests for DHCP and BSDP,
 # returning the results to a plist or screen.
