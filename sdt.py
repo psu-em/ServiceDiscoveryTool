@@ -1,20 +1,20 @@
-'''
-Service Discovery Tool 1.1
-This tool broadcasts requests for DHCP and BSDP,
-returning the results to a plist or screen.
+#!/usr/local/bin/python3
+# Service Discovery Tool 1.2
+# This tool broadcasts requests for DHCP and BSDP,
+# returning the results to a plist or screen.
+#
+# For more information use:
+#     sdt.py -h
+#
+# Requires: python3
+#
+# Written Rusty Myers June 2016 with much help from @frogor and @bruienne.
+# Original writtn by hassane: http://code.activestate.com/recipes/577649-dhcp-query/ Created on Mar 27, 2011
+# notes:  BSDP format - https://static.afp548.com/mactips/bootpd.html
+#         http://stackoverflow.com/questions/24196932/how-can-i-get-the-ip-address-of-eth0-in-python
+#         https://www.ietf.org/rfc/rfc2132.txt
+#         http://stackoverflow.com/questions/24131812/plistlib-to-update-existing-plist-file
 
-For more information use:
-    sdt.py -h
-
-Requires: python3
-
-Written Rusty Myers June 2016 with much help from @frogor and @bruienne.
-Original writtn by hassane: http://code.activestate.com/recipes/577649-dhcp-query/ Created on Mar 27, 2011
-notes:  BSDP format - https://static.afp548.com/mactips/bootpd.html
-        http://stackoverflow.com/questions/24196932/how-can-i-get-the-ip-address-of-eth0-in-python
-        https://www.ietf.org/rfc/rfc2132.txt
-        http://stackoverflow.com/questions/24131812/plistlib-to-update-existing-plist-file
-'''
 import socket, argparse, struct, plistlib, os
 from uuid import getnode as get_mac
 from random import randint
@@ -58,7 +58,7 @@ def openSocket(port):
     dhcps.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1) #broadcast
 
     try:
-        if packetType is "dhcp":
+        if packetType == "dhcp":
             dhcps.bind(('', port))    #we want to listen on 68 for DHCP
         else:
             dhcps.bind(('', port))    #we want to listen on 993 for BSDP
@@ -76,14 +76,13 @@ def parse_vendor(v_opts):
     # [4,2,255,255] = Server priority message type 4, length 2, value 0xffff (65535 - Highest)
     # [7,4, x, x] = Option 7 (4) Default Boot Image ID number
     # [9,l, x] Boot Image List option 9 (l = random length) x = image names
-    
     # Example Codes:    
     # Vendor Option Block
     #\x01\x01\x01 - [1,1,1] = BSDP message type (1), length (1), value (1 = list)
     #\x04\x02\xd6\xcb - [4,2,255,255] = Server priority message type 4, length 2, value 0xffff (65535 - Highest)
     #\x07\x04\x81\x00\x13\xba - Option 7 (4bytes long) Default Boot Image ID
     #\x09\x11\x81\x00\x13\xba\x0c\x43\x4c\x4d\x42\x75\x69\x6c\x64\x4d\x65\x6e\x75 - Boot Image List option (option 9)
-    
+
     # Create and array of bytes to deal with it
     b = bytearray(v_opts)
     results = dict()
@@ -120,7 +119,8 @@ def writeDHCPPlist(plistPath,offer):
     # Check for existing DHCP Info
     if os.path.exists(plistPath):
         try:
-            pldata = plistlib.readPlist(plistPath)
+            with open(plistPath, 'rb') as fp:
+                pldata = plistlib.load(fp)
         except:
             print("Can't read plist.")
         try:
@@ -135,7 +135,8 @@ def writeDHCPPlist(plistPath,offer):
         pldata = dict(bsdp = [],dhcp = dict(dhcpserverip=dhcpServer, ipaddress=ipAdd))
         
     try:
-        plistlib.writePlist(pldata, plistPath)
+        with open(plistPath, 'wb') as fp:
+            plistlib.dump(pldata, fp)
     except NameError as e:
         print("Failed to write plist!")
         print(e)
@@ -146,14 +147,14 @@ def writeBSDPPlist(plistPath,offers):
     Test with QnA: 
     concatenations " " of  ("Server:"; concatenations " nbis=(" of  ( strings "ip" of it; ( concatenations "; " of (concatenation ", " of (strings "name" of it; strings "id" of it; booleans "default" of it as string) ) of dictionaries of values of arrays "nbis" of it ) );")" ) of dictionaries of values of array "bsdp" of dictionary of file "/tmp/new.plist"
     '''
-    
     # Create Variables for DHCP Info
     dhcpServer = ""
     ipAdd = ""
     # Check for existing DHCP Info
     if os.path.exists(plistPath):
         try:
-            p = plistlib.readPlist(plistPath)
+            with open(plistPath, 'rb') as fp:
+                pldata = plistlib.load(fp)
         except:
             print("Can't read plist.")    
         try:
@@ -208,7 +209,8 @@ def writeBSDPPlist(plistPath,offers):
     # print(pldata)
     
     try:
-        plistlib.writePlist(pldata, plistPath)
+        with open(plistPath, 'wb') as fp:
+            plistlib.dump(pldata, fp)
     except e:
         print("Failed to write plist!")
         print(e)
@@ -221,7 +223,7 @@ def testOne():
     plistPath="/tmp/org.network.plist"
     writeBSDPPlist(plistPath, [offer])
     exit(0)
-        
+
 class DHCPDiscover:
     def __init__(self):
         self.transactionID = b''
@@ -231,7 +233,7 @@ class DHCPDiscover:
 
     def buildPacket(self,packType):
         macb = getMacInBytes()
-        if packType is "dhcp":
+        if packType == "dhcp":
             packet = b''
             packet += b'\x01'   #Message type: Boot Request (1)
             packet += b'\x01'   #Hardware type: Ethernet
@@ -432,7 +434,7 @@ class DHCPOffer:
 
     def writePlist(self, plistPath):
         try:
-            p = plistlib.readPlist(sysrecord.plistPath)
+            p = plistlib.load(sysrecord.plistPath)
             p["ipaddress"] = attr_
             plistlib.writePlist(p, sysrecord.plistPath)
         except:
