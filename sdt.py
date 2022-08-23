@@ -403,6 +403,7 @@ class DHCPOffer:
         self.DNS = []
         self.unpack()
     def unpack(self):
+        print('{0}{1}'.format('transID: ', self.transID))
         print('{0}{1}'.format('Length: ', len(self.data)))
         print('{0}{1}'.format('Data: ', self.data))
         if self.data[4:8] == self.transID :
@@ -473,7 +474,7 @@ if __name__ == '__main__':
         try:
             while True:
                 data = dhcps.recv(1024)
-                print(data)
+                # print(data)
                 offer = DHCPOffer(data, discoverPacket.transactionID)
                 if offer.offerIP:
                     offer.printOffer()
