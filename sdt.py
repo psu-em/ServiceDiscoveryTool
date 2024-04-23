@@ -43,31 +43,31 @@ def get_ip_address():
 
 # Get the IP Address in Bytes
 def getIPInBytes():
-    currIP=get_ip_address().split('.') # put IP address into list
+    current_IP=get_ip_address().split('.') # put IP address into list
     # print(currIP) # print current IP for testing
-    bcurrIP=b'' # Create new byte holder
-    for i in currIP:
+    bytes_current_IP=b'' # Create new byte holder
+    for i in current_IP:
         # add each part of IP as byte into byte holder
-        bcurrIP += struct.pack("!B", int(i))
+        bytes_current_IP += struct.pack("!B", int(i))
     # return byte formated IP
-    return bcurrIP
+    return bytes_current_IP
 
 def openSocket(port):
     # defining the socket
-    dhcps = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    #internet, UDP
-    dhcps.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1) #broadcast
+    dhcp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    #internet, UDP
+    dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1) #broadcast
 
     try:
         if packetType == "dhcp":
-            dhcps.bind(('', port))    #we want to listen on 68 for DHCP
+            dhcp_socket.bind(('', port))    #we want to listen on 68 for DHCP
         else:
-            dhcps.bind(('', port))    #we want to listen on 993 for BSDP
+            dhcp_socket.bind(('', port))    #we want to listen on 993 for BSDP
     except Exception as e:
         print('port 68 in use...')
-        dhcps.close()
+        dhcp_socket.close()
         input('press any key to quit...')
         exit(0)
-    return dhcps
+    return dhcp_socket
     
 # Deal with Vendor block from BSDP packet
 def parse_vendor(v_opts):
@@ -149,7 +149,7 @@ def writeBSDPPlist(plistPath,offers):
     '''
     # Create Variables for DHCP Info
     dhcpServer = ""
-    ipAdd = ""
+    ip_address = ""
     # Check for existing DHCP Info
     if os.path.exists(plistPath):
         try:
@@ -160,13 +160,13 @@ def writeBSDPPlist(plistPath,offers):
         try:
             # Update to current values
             dhcpServer = p["dhcp"]["dhcpserverip"]
-            ipAdd = p["dhcp"]["ipaddress"]
+            ip_address = p["dhcp"]["ipaddress"]
             #print("Found existing DHCP Settings, Updating Plist...")
         except:
             print("Couldn't Find DHCP Settings. No bother.")
             
     # Setup basic structure for BSDP and DHCP
-    pldata = dict(bsdp = [],dhcp = dict(dhcpserverip=dhcpServer, ipaddress=ipAdd))
+    pldata = dict(bsdp = [],dhcp = dict(dhcpserverip=dhcpServer, ipaddress=ip_address))
     
     #print("Received {0} offers".format(len(offers)))
     for N in range(0, len(offers)):
