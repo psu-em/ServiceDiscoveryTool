@@ -1,3 +1,5 @@
+[![ServiceDiscoveryTool workflow](https://github.com/psu-em/ServiceDiscoveryTool/actions/workflows/python-app.yml/badge.svg)](https://github.com/psu-em/ServiceDiscoveryTool/actions/workflows/python-app.yml)
+
 macOS Service Discovery Tool
 =============================
 
