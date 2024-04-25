@@ -16,7 +16,8 @@ permissions:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: 
+      labels: macOS
 
     steps:
     - uses: actions/checkout@v3
