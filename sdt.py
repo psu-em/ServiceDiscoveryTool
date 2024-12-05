@@ -68,11 +68,10 @@ def openSocket(port, packetType):
         else:
             dhcp_socket.bind(("", port))  # we want to listen on 993 for BSDP
     except Exception as e:
-        print("port 68 in use...")
+        print("port {} in use...".format(port))
         dhcp_socket.close()
         input("press any key to quit...")
         exit(0)
-    print(dhcp_socket)
     return dhcp_socket
 
 
@@ -250,7 +249,6 @@ class DHCPDiscover:
 
     def buildPacket(self, packType):
         macb = getMacInBytes()
-        print(macb)
         if packType == "dhcp":
             packet = b""
             packet += b"\x01"  # Message type: Boot Request (1)
@@ -483,7 +481,11 @@ class DHCPOffer:
             self.leaseTime = str(struct.unpack("!L", self.data[251:255])[0])
             self.router = ".".join(map(lambda x: str(x), self.data[257:261]))
             self.subnetMask = ".".join(map(lambda x: str(x), self.data[263:267]))
-            dnsNB = int(self.data[268] / 4)
+            try:
+                dnsNB = int(self.data[268] / 4)
+            except:
+                print("Failed to get DNS...is this OFF Campus?")
+                return
             # dnsNB = ord(data[268])/4
             for i in range(0, 4 * dnsNB, 4):
                 self.DNS.append(
