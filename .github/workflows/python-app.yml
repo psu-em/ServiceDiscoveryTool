@@ -1,24 +1,18 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Run Service Discover Tool
-
 on:
   workflow_dispatch:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-
 permissions:
   contents: read
-
 jobs:
   build:
-
     runs-on: 
-      labels: macOS
-
+      labels: autopkg
     steps:
     - uses: actions/checkout@v3
     - name: Test sdt.py
