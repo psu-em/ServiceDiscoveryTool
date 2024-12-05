@@ -18,6 +18,7 @@
 import socket, argparse, struct, plistlib, os
 from uuid import getnode as get_mac
 from random import randint
+import codecs
 
 
 # Get the MAC address in bytes
@@ -56,11 +57,11 @@ def getIPInBytes():
     return bytes_current_IP
 
 
-def openSocket(port):
-    # defining the socket
-    dhcp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # internet, UDP
+def openSocket(port, packetType):
+    """defining the socket"""
+    dhcp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)  # broadcast
-
     try:
         if packetType == "dhcp":
             dhcp_socket.bind(("", port))  # we want to listen on 68 for DHCP
@@ -71,6 +72,7 @@ def openSocket(port):
         dhcp_socket.close()
         input("press any key to quit...")
         exit(0)
+    print(dhcp_socket)
     return dhcp_socket
 
 
@@ -232,6 +234,13 @@ def testOne():
     exit(0)
 
 
+def testDHCP():
+    data = b"\x02\x01\x06\x00Kx,\xcd\x00\x00\x80\x00\x00\x00\x00\x00\xac\x1c\xcfO\x00\x00\x00\x00\x00\x00\x00\x00\x14\xc2\x13\xec\xd9i\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00c\x82Sc5\x01\x026\x04\x80v\x19\x0e3\x04\x00\x01Q\x80\x01\x04\xff\xff\xff\x00\x03\x04\xac\x1c\xcf\x01\x06\x08\x80v\x19\x03\x80vF\x05\xff"
+    offer = DHCPOffer(data, b"Kx,\xcd")
+    offer.printOffer()
+    exit(0)
+
+
 class DHCPDiscover:
     def __init__(self):
         self.transactionID = b""
@@ -241,6 +250,7 @@ class DHCPDiscover:
 
     def buildPacket(self, packType):
         macb = getMacInBytes()
+        print(macb)
         if packType == "dhcp":
             packet = b""
             packet += b"\x01"  # Message type: Boot Request (1)
@@ -249,7 +259,7 @@ class DHCPDiscover:
             packet += b"\x00"  # Hops: 0
             packet += self.transactionID  # Transaction ID
             packet += b"\x00\x00"  # Seconds elapsed: 0
-            packet += b"\x80\x00"  # Bootp flags: 0x8000 (Broadcast) + reserved flags
+            packet += b"\x00\x00"  # Bootp flags: 0x8000 (Broadcast) + reserved flags
             packet += b"\x00\x00\x00\x00"  # Client IP address: 0.0.0.0
             packet += b"\x00\x00\x00\x00"  # Your (client) IP address: 0.0.0.0
             packet += b"\x00\x00\x00\x00"  # Next server IP address: 0.0.0.0
@@ -264,8 +274,8 @@ class DHCPDiscover:
             packet += (
                 b"\x35\x01\x01"  # Option: (t=53,l=1) DHCP Message Type = DHCP Discover
             )
-            packet += b"\x3d\x06\x00\x26\x9e\x04\x1e\x9b"  # Option: (t=61,l=6) Client identifier
-            packet += b"\x3d\x06" + macb
+            # packet += b"\x3d\x06\x00\x26\x9e\x04\x1e\x9b"  # Option: (t=61,l=6) Client identifier
+            packet += b"\x3d\x07\x01" + macb
             packet += (
                 b"\x37\x03\x03\x01\x06"  # Option: (t=55,l=3) Parameter Request List
             )
@@ -457,23 +467,27 @@ class DHCPOffer:
         self.unpack()
 
     def unpack(self):
-        print("{0}{1}".format("transID: ", self.transID))
-        print("{0}{1}".format("Length: ", len(self.data)))
-        print("{0}{1}".format("Data: ", self.data))
+        # print("{0}{1}".format("transID: ", self.transID))
+        # print("{0}{1}".format("Length: ", len(self.data)))
+        # print("{0}{1}".format("Data: ", self.data))
+        # print("{0}{1}".format("Data: ", " ".join(map(lambda x: str(x), self.data))))
         if self.data[4:8] == self.transID:
-            self.offerIP = ".".join(map(lambda x: str(x), data[16:20]))
+            print("Matched transaction ID")
+            self.offerIP = ".".join(map(lambda x: str(x), self.data[16:20]))
             self.nextServerIP = ".".join(
-                map(lambda x: str(x), data[20:24])
+                map(lambda x: str(x), self.data[21:25])
             )  # c'est une option
-            self.DHCPServerIdentifier = ".".join(map(lambda x: str(x), data[245:249]))
-            self.leaseTime = str(struct.unpack("!L", data[251:255])[0])
-            self.router = ".".join(map(lambda x: str(x), data[257:261]))
-            self.subnetMask = ".".join(map(lambda x: str(x), data[263:267]))
-            dnsNB = int(data[268] / 4)
+            self.DHCPServerIdentifier = ".".join(
+                map(lambda x: str(x), self.data[245:249])
+            )
+            self.leaseTime = str(struct.unpack("!L", self.data[251:255])[0])
+            self.router = ".".join(map(lambda x: str(x), self.data[257:261]))
+            self.subnetMask = ".".join(map(lambda x: str(x), self.data[263:267]))
+            dnsNB = int(self.data[268] / 4)
             # dnsNB = ord(data[268])/4
             for i in range(0, 4 * dnsNB, 4):
                 self.DNS.append(
-                    ".".join(map(lambda x: str(x), data[269 + i : 269 + i + 4]))
+                    ".".join(map(lambda x: str(x), self.data[269 + i : 269 + i + 4]))
                 )
 
     def printOffer(self):
@@ -536,6 +550,13 @@ if __name__ == "__main__":
         dest="testONE",
         help="Test code with stored BSDP response from OS X Server, writing to /tmp/org.network.plist.",
     )
+    parser.add_argument(
+        "-t2",
+        "--testTwo",
+        action="store_true",
+        dest="testTWO",
+        help="Test code with stored DHCP response.",
+    )
     args = parser.parse_args()
 
     # Pull out Arguments
@@ -543,21 +564,22 @@ if __name__ == "__main__":
 
     if args.testONE:
         testOne()
+    if args.testTWO:
+        testDHCP()
 
     # Process Arguments
     if args.choiceDHCP:
         packetType = "dhcp"
-        dhcps = openSocket(68)
+        dhcps = openSocket(67, packetType)
         # buiding and sending the DHCPDiscover packet
         discoverPacket = DHCPDiscover()
-        dhcps.sendto(discoverPacket.buildPacket(packetType), ("<broadcast>", 67))
+        dhcps.sendto(discoverPacket.buildPacket(packetType), ("", 67))
         print("DHCP Discover sent waiting for reply...\n")
         # receiving DHCPOffer packet
         dhcps.settimeout(15)
         try:
             while True:
                 data = dhcps.recv(1024)
-                # print(data)
                 offer = DHCPOffer(data, discoverPacket.transactionID)
                 if offer.offerIP:
                     offer.printOffer()
@@ -571,10 +593,10 @@ if __name__ == "__main__":
 
     if args.choiceBSDP:
         packetType = "bsdp"
-        dhcps = openSocket(993)
+        dhcps = openSocket(993, packetType)
         # buiding and sending the DHCPDiscover packet
         discoverPacket = DHCPDiscover()
-        dhcps.sendto(discoverPacket.buildPacket(packetType), ("<broadcast>", 67))
+        dhcps.sendto(discoverPacket.buildPacket(packetType), ("0.0.0.0", 67))
         print("BSDP Discover sent waiting for reply...\n")
 
         bsdpOffers = []
