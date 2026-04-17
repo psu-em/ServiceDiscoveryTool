@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 # Service Discovery Tool 1.2
 # This tool broadcasts requests for DHCP and BSDP,
 # returning the results to a plist or screen.
@@ -15,10 +15,17 @@
 #         https://www.ietf.org/rfc/rfc2132.txt
 #         http://stackoverflow.com/questions/24131812/plistlib-to-update-existing-plist-file
 
-import socket, argparse, struct, plistlib, os
+import socket, argparse, struct, plistlib, os, re, subprocess
 from uuid import getnode as get_mac
 from random import randint
 import codecs
+
+DEBUG = False
+
+
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
 
 
 # Get the MAC address in bytes
@@ -57,18 +64,60 @@ def getIPInBytes():
     return bytes_current_IP
 
 
+def getBroadcastAddress():
+    """Return the broadcast address for the local IPv4 interface."""
+    try:
+        output = subprocess.check_output(
+            ["ifconfig"], text=True, stderr=subprocess.DEVNULL
+        )
+        blocks = []
+        current = {"name": None, "lines": []}
+        for line in output.splitlines():
+            if line and not line.startswith("\t") and not line.startswith(" "):
+                if current["name"]:
+                    blocks.append(current)
+                current = {"name": line.split(":", 1)[0], "lines": [line]}
+            elif current["name"]:
+                current["lines"].append(line)
+        if current["name"]:
+            blocks.append(current)
+
+        for block in blocks:
+            name = block["name"]
+            if name.startswith(("utun", "gif", "stf", "lo", "p2p", "bridge")):
+                continue
+            flags = "".join(block["lines"])
+            if "BROADCAST" not in flags or "UP" not in flags:
+                continue
+            for line in block["lines"]:
+                line = line.strip()
+                if line.startswith("inet ") and "broadcast" in line:
+                    match = re.search(r"broadcast\s+([0-9]+(?:\.[0-9]+){3})", line)
+                    if match:
+                        return match.group(1)
+    except Exception:
+        pass
+
+    try:
+        local_ip = get_ip_address()
+        import ipaddress
+
+        network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
+        return str(network.broadcast_address)
+    except Exception:
+        return "255.255.255.255"
+
+
 def openSocket(port, packetType):
     """defining the socket"""
     dhcp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)  # broadcast
     try:
-        if packetType == "dhcp":
-            dhcp_socket.bind(("", port))  # we want to listen on 68 for DHCP
-        else:
-            dhcp_socket.bind(("", port))  # we want to listen on 993 for BSDP
+        dhcp_socket.bind(("0.0.0.0", port))
     except Exception as e:
-        print("port {} in use...".format(port))
+        print("port {} in use or unavailable: {}".format(port, e))
         dhcp_socket.close()
         input("press any key to quit...")
         exit(0)
@@ -223,23 +272,6 @@ def writeBSDPPlist(plistPath, offers):
         print(e)
 
 
-def testOne():
-    # Test Data from OS X 10.11 NetBoot Server and exit
-    data = b"\x02\x01\x06\x00\re\x88\xa4\x00\x00\x00\x00\n\x00\x01]\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\xe6P\t\xed\xa2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00c\x82Sc5\x01\x056\x04\n\x00\x01\x07<\tAAPLBSDPC+V\x01\x01\x01\x04\x02\x7f\xfe\x07\x04\x82\x00\x04G\tG\x82\x00\x04G\x08DSR-1095\x81\x00\x03`5NetInstall of Install OS X El Capitan 10.11.3 - 15D21\xff"
-    offer = BSDPOffer(data, b"\x0d\x65\x88\xa4")
-    offer.printBSDPOffer()
-    plistPath = "/tmp/org.network.plist"
-    writeBSDPPlist(plistPath, [offer])
-    exit(0)
-
-
-def testDHCP():
-    data = b"\x02\x01\x06\x00Kx,\xcd\x00\x00\x80\x00\x00\x00\x00\x00\xac\x1c\xcfO\x00\x00\x00\x00\x00\x00\x00\x00\x14\xc2\x13\xec\xd9i\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00c\x82Sc5\x01\x026\x04\x80v\x19\x0e3\x04\x00\x01Q\x80\x01\x04\xff\xff\xff\x00\x03\x04\xac\x1c\xcf\x01\x06\x08\x80v\x19\x03\x80vF\x05\xff"
-    offer = DHCPOffer(data, b"Kx,\xcd")
-    offer.printOffer()
-    exit(0)
-
-
 class DHCPDiscover:
     def __init__(self):
         self.transactionID = b""
@@ -257,7 +289,7 @@ class DHCPDiscover:
             packet += b"\x00"  # Hops: 0
             packet += self.transactionID  # Transaction ID
             packet += b"\x00\x00"  # Seconds elapsed: 0
-            packet += b"\x00\x00"  # Bootp flags: 0x8000 (Broadcast) + reserved flags
+            packet += b"\x80\x00"  # Bootp flags: 0x8000 (Broadcast) + reserved flags
             packet += b"\x00\x00\x00\x00"  # Client IP address: 0.0.0.0
             packet += b"\x00\x00\x00\x00"  # Your (client) IP address: 0.0.0.0
             packet += b"\x00\x00\x00\x00"  # Next server IP address: 0.0.0.0
@@ -465,32 +497,73 @@ class DHCPOffer:
         self.unpack()
 
     def unpack(self):
-        # print("{0}{1}".format("transID: ", self.transID))
-        # print("{0}{1}".format("Length: ", len(self.data)))
-        # print("{0}{1}".format("Data: ", self.data))
-        # print("{0}{1}".format("Data: ", " ".join(map(lambda x: str(x), self.data))))
+        """
+        Parse DHCP packet by reading fixed header and then iterating through
+        DHCP options dynamically (rather than using hardcoded offsets).
+        """
+        debug_print("{0}{1}".format("transID: ", self.transID))
+        debug_print("{0}{1}".format("Length: ", len(self.data)))
+        debug_print("{0}{1}".format("Data: ", self.data))
+        debug_print(
+            "{0}{1}".format("Data: ", " ".join(map(lambda x: str(x), self.data)))
+        )
+
         if self.data[4:8] == self.transID:
-            print("Matched transaction ID")
-            self.offerIP = ".".join(map(lambda x: str(x), self.data[16:20]))
-            self.nextServerIP = ".".join(
-                map(lambda x: str(x), self.data[21:25])
-            )  # c'est une option
-            self.DHCPServerIdentifier = ".".join(
-                map(lambda x: str(x), self.data[245:249])
-            )
-            self.leaseTime = str(struct.unpack("!L", self.data[251:255])[0])
-            self.router = ".".join(map(lambda x: str(x), self.data[257:261]))
-            self.subnetMask = ".".join(map(lambda x: str(x), self.data[263:267]))
-            try:
-                dnsNB = int(self.data[268] / 4)
-            except:
-                print("Failed to get DNS...is this OFF Campus?")
-                return
-            # dnsNB = ord(data[268])/4
-            for i in range(0, 4 * dnsNB, 4):
-                self.DNS.append(
-                    ".".join(map(lambda x: str(x), self.data[269 + i : 269 + i + 4]))
-                )
+            debug_print("Matched transaction ID")
+            b = bytearray(self.data)
+
+            # Parse fixed DHCP header (240 bytes total before options)
+            del b[0:1]  # Message type
+            del b[0:1]  # Hardware type
+            del b[0:1]  # Hardware address length
+            del b[0:1]  # Hops
+            del b[0:4]  # Transaction ID
+            del b[0:2]  # Seconds elapsed
+            del b[0:2]  # Bootp flags
+            del b[0:4]  # Client IP Address
+            self.offerIP = ".".join(map(lambda x: str(x), b[0:4]))
+            del b[0:4]  # Your (client) IP Address
+            self.nextServerIP = ".".join(map(lambda x: str(x), b[0:4]))
+            del b[0:4]  # Next server IP Address
+            del b[0:4]  # Relay Agent IP Address
+            del b[0:6]  # Client MAC Address
+            del b[0:10]  # Client hardware address padding
+            del b[0:64]  # Server Host Name
+            del b[0:128]  # Boot file name
+            del b[0:4]  # Magic Cookie
+
+            # Parse DHCP options dynamically
+            while b:
+                option_code = b.pop(0)
+                if option_code == 255:
+                    # End of options marker
+                    break
+
+                option_len = b.pop(0)
+                option_value = b[0:option_len]
+                del b[0:option_len]
+
+                # Process standard DHCP options
+                if option_code == 1:
+                    # Subnet Mask
+                    self.subnetMask = ".".join(map(lambda x: str(x), option_value))
+                elif option_code == 3:
+                    # Router (default gateway)
+                    self.router = ".".join(map(lambda x: str(x), option_value))
+                elif option_code == 6:
+                    # Domain Name Server
+                    for i in range(0, len(option_value), 4):
+                        self.DNS.append(
+                            ".".join(map(lambda x: str(x), option_value[i : i + 4]))
+                        )
+                elif option_code == 51:
+                    # IP Address Lease Time
+                    self.leaseTime = str(struct.unpack("!L", option_value)[0])
+                elif option_code == 54:
+                    # DHCP Server Identifier
+                    self.DHCPServerIdentifier = ".".join(
+                        map(lambda x: str(x), option_value)
+                    )
 
     def printOffer(self):
         key = [
@@ -546,51 +619,60 @@ if __name__ == "__main__":
         help="Path to plist for saving results to plist. Default: /Library/Preferences/edu.psu.sdt.plist",
     )
     parser.add_argument(
-        "-t1",
-        "--testOne",
+        "-v",
+        "--debug",
         action="store_true",
-        dest="testONE",
-        help="Test code with stored BSDP response from OS X Server, writing to /tmp/org.network.plist.",
+        dest="debug",
+        help="Enable debug output.",
     )
-    parser.add_argument(
-        "-t2",
-        "--testTwo",
-        action="store_true",
-        dest="testTWO",
-        help="Test code with stored DHCP response.",
-    )
+
     args = parser.parse_args()
+    DEBUG = args.debug
 
     # Pull out Arguments
     plistPath = args.plistPath
 
-    if args.testONE:
-        testOne()
-    if args.testTWO:
-        testDHCP()
-
     # Process Arguments
     if args.choiceDHCP:
         packetType = "dhcp"
-        dhcps = openSocket(67, packetType)
+        dhcps = openSocket(68, packetType)
+        debug_print("Socket opened on port 68")
         # buiding and sending the DHCPDiscover packet
         discoverPacket = DHCPDiscover()
-        dhcps.sendto(discoverPacket.buildPacket(packetType), ("", 67))
-        print("DHCP Discover sent waiting for reply...\n")
+        packet = discoverPacket.buildPacket(packetType)
+        broadcast_address = getBroadcastAddress()
+        debug_print(
+            "DHCP Discover packet built, Transaction ID: {0}".format(
+                discoverPacket.transactionID.hex()
+            )
+        )
+        debug_print(
+            "Sending packet to broadcast address {0}...".format(broadcast_address)
+        )
+        bytes_sent = dhcps.sendto(packet, (broadcast_address, 67))
+        debug_print(
+            "DHCP Discover sent ({0} bytes) waiting for reply...\n".format(bytes_sent)
+        )
         # receiving DHCPOffer packet
         dhcps.settimeout(15)
         try:
+            packet_count = 0
             while True:
                 data = dhcps.recv(1024)
+                packet_count += 1
+                debug_print(
+                    "Received packet #{0}, {1} bytes".format(packet_count, len(data))
+                )
+                debug_print("Packet transaction ID: {0}".format(data[4:8].hex()))
                 offer = DHCPOffer(data, discoverPacket.transactionID)
-                if offer.offerIP:
+                if offer.offerIP and offer.offerIP != "0.0.0.0":
                     offer.printOffer()
                     # Write plist location from argparse
                     # Update/Write plist with DHCP settings
                     writeDHCPPlist(plistPath, offer)
                     break
         except socket.timeout as e:
-            print(e)
+            print("Socket timeout - no valid DHCP offers received: {0}".format(e))
         dhcps.close()  # we close the socket
 
     if args.choiceBSDP:
